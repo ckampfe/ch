@@ -37,7 +37,8 @@ defmodule ChWeb.ChessLive do
                 Chess.Piece.to_string(piece)
 
               :error ->
-                ""
+                # blank square unicode hack
+                "\u3000"
             end
           %>
         </td>
@@ -55,79 +56,68 @@ defmodule ChWeb.ChessLive do
       ) do
     {column, ""} = Integer.parse(column, 10)
     {row, ""} = Integer.parse(row, 10)
+    this_selection = {column, row}
 
-    if socket.assigns.selected_position == {column, row} do
-      socket =
-        assign(socket,
-          selected_position: nil,
-          position_string: "",
-          moves: []
-        )
+    previous_selection = socket.assigns.selected_position
 
-      {:noreply, socket}
-    else
-      if socket.assigns.selected_position do
-        piece_at_position =
-          Enum.find(socket.assigns.game.board.pieces, fn piece ->
-            Chess.Piece.position(piece) |> Chess.Position.to_xy() == {column, row}
-          end)
+    if previous_selection do
+      if previous_selection == this_selection || this_selection not in socket.assigns.moves do
+        socket =
+          assign(socket,
+            moves: [],
+            selected_position: nil,
+            position_string: ""
+          )
 
-        possible_moves =
-          if piece_at_position do
-            Chess.Piece.moves(piece_at_position, socket.assigns.game.board)
-            |> Enum.map(fn position ->
-              Chess.Position.to_xy(position)
-            end)
-          else
-            []
-          end
-
-        if {column, row} in possible_moves do
-          # TODO actually finish the move logic in Chess.Game (game.ex)
+        {:noreply, socket}
+      else
+        if this_selection in socket.assigns.moves do
+          game =
+            Chess.Game.move(
+              socket.assigns.game,
+              Chess.Position.from(previous_selection),
+              Chess.Position.from(this_selection)
+            )
 
           socket =
             assign(socket,
+              game: game,
+              moves: [],
               selected_position: nil,
-              position_string: "",
-              moves: []
+              position_string: ""
             )
 
           {:noreply, socket}
         else
-          socket =
-            assign(socket,
-              selected_position: nil,
-              position_string: "",
-              moves: []
-            )
-
           {:noreply, socket}
         end
-      else
-        piece_at_position =
-          Enum.find(socket.assigns.game.board.pieces, fn piece ->
-            Chess.Piece.position(piece) |> Chess.Position.to_xy() == {column, row}
-          end)
-
-        possible_moves =
-          if piece_at_position do
-            Chess.Piece.moves(piece_at_position, socket.assigns.game.board)
-            |> Enum.map(fn position ->
-              Chess.Position.to_xy(position)
-            end)
-          else
-            []
-          end
-
-        socket =
-          assign(socket,
-            selected_position: {column, row},
-            position_string: "#{column}, #{row}",
-            moves: possible_moves
-          )
-
-        {:noreply, socket}
       end
+    else
+      piece_at_position =
+        Enum.find(socket.assigns.game.board.pieces, fn piece ->
+          position = Chess.Piece.position(piece)
+          Chess.Position.to_xy(position) == this_selection
+        end)
+
+      moves =
+        if piece_at_position do
+          Chess.Piece.moves(piece_at_position, socket.assigns.game.board)
+          |> Enum.map(&Chess.Position.to_xy(&1))
+        else
+          []
+        end
+
+      selected_position = this_selection
+      position_string = "#{inspect(this_selection)}"
+
+      socket =
+        assign(socket,
+          moves: moves,
+          selected_position: selected_position,
+          position_string: position_string
+        )
+
+      {:noreply, socket}
     end
   end
 
